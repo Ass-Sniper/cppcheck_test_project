@@ -357,7 +357,8 @@ kay@kay-vm:cppcheck_test_project$
 ```ignore
 # 扫描产物
 cppcheck_cache/
-cppcheck_results.xml
+#忽略任意路径的该文件
+**/cppcheck_results.xml
 cppcheck_report/
 clang_report/
 
