@@ -1,7 +1,12 @@
+根据您提供的项目结构更新（新增了 `Makefile`、`src/main.cpp` 以及集成的 **Clang Static Analyzer** 功能），我们需要全面更新 `README.md`。
 
-# C++ 静态分析集成工具 (Cppcheck Automation)
+新版 `README.md` 强化了“双重扫描”的概念，并增加了关于自定义编译命令的说明。
 
-本项目提供了一套自动化的 C++ 静态代码分析方案。通过封装 `cppcheck`，实现了路径自动搜索、配置归档管理、结果彩色化显示以及交互式 HTML 报告的生成。
+---
+
+# C++ 静态分析集成工具 (Cppcheck & Clang Automation)
+
+本项目提供了一套自动化的 C++ 静态代码分析方案。通过封装 `Cppcheck` 和 `Clang Static Analyzer`，实现了路径自动搜索、配置归档管理、深度流分析以及交互式 HTML 报告的生成。
 
 ---
 
@@ -11,19 +16,19 @@
 
 ```text
 .
-├── cppcheck/               # [配置归档] 存放屏蔽规则与嵌入式库定义 (运行 init 后生成)
+├── cppcheck/               # [配置归档] 存放屏蔽规则与嵌入式库定义
 │   ├── suppressions.txt     # 错误忽略白名单
-│   └── embedded.cfg         # 嵌入式平台宏与函数行为定义
+│   ├── embedded.cfg         # 嵌入式平台宏与函数行为定义
+│   └── include_paths.txt    # 手动指定的额外头文件路径
 ├── src/                     # 源代码主目录
+│   ├── main.cpp             # 项目入口及集成测试
 │   ├── common/              # 自动搜寻此下的 include 文件夹
 │   └── framework/           # 自动搜寻此下的 include 文件夹
-├── docs/                    # 项目集成与安装文档
+├── include/                 # 公共头文件目录
+├── Makefile                 # 支持 Clang 扫描的编译配置文件
 ├── tools/
-│   ├── cppcheck_launcher.sh # [核心] 集成进度条、配置加载与统计的启动脚本
-│   └── docker/
-│       └── static-analysis/ # Docker 环境下的分析适配脚本
-├── README.md                # 项目说明文档
-└── cppcheck_cache/         # [自动生成] 扫描缓存，加速二次检测
+│   └── cppcheck_launcher.sh # [核心] 集成 Cppcheck 与 Clang 扫描逻辑的脚本
+└── README.md                # 项目说明文档
 
 ```
 
@@ -31,12 +36,15 @@
 
 ## 2. 核心功能
 
-* **配置归档管理**：所有扫描配置统一存放在 `cppcheck/` 目录，避免根目录杂乱。
-* **智能包含路径**：自动递归查找 `src/common` 和 `src/framework` 下的所有 `include` 目录，动态分行打印搜寻结果。
-* **实时进度反馈**：在终端提供带有百分比的分析进度条（支持 `--no-progress` 关闭）。
-* **彩色统计摘要**：扫描结束后，终端自动输出 `Error`, `Warning`, `Style` 等分级统计。
-* **自动化 HTML 报告**：自动调用 `cppcheck-htmlreport` 生成带源码高亮的交互式网页。
-* **CI/CD 友好**：根据 `Error` 或 `Warning` 的存在情况返回退出码（0 或 1），方便流水线集成。
+* **双扫描引擎支持**：
+* **Cppcheck**：快速扫描语法、编码风格及基础逻辑错误。
+* **Clang (scan-build)**：通过模拟执行路径，挖掘深层内存泄漏与逻辑缺陷。
+
+
+* **配置归档管理**：所有扫描配置统一存放在 `cppcheck/` 目录。
+* **智能包含路径**：自动递归查找 `src/` 下所有 `include` 目录并自动去重。
+* **深度清理逻辑**：`clean` 指令可一键清除 Cppcheck 缓存、Clang 报告及 `Makefile` 编译产物。
+* **CI/CD 友好**：支持 `--no-progress` 模式，并根据检测风险返回对应的退出码。
 
 ---
 
@@ -44,33 +52,43 @@
 
 ### 前提条件
 
-确保系统中安装了 `cppcheck` 及其 HTML 报告工具：
-
 ```bash
-sudo apt-get install cppcheck
+sudo apt-get install cppcheck clang-tools w3m
 
 ```
 
 ### 基础操作流程
 
 1. **初始化配置**（仅需一次）：
-在根目录下执行，生成 `cppcheck/` 配置文件模板。
 ```bash
 ./tools/cppcheck_launcher.sh init
 
 ```
 
 
-2. **执行代码扫描**：
-指定扫描 `src` 目录（脚本会自动关联头文件）。
+2. **执行标准扫描 (Cppcheck)**：
 ```bash
 ./tools/cppcheck_launcher.sh src/
 
 ```
 
 
-3. **清理生成物**：
-删除缓存、XML 结果和 HTML 报告。
+3. **执行深度分析 (Clang)**：
+需要项目根目录下存在 `Makefile` 或 `CMakeLists.txt`。
+```bash
+./tools/cppcheck_launcher.sh clang
+
+```
+
+
+4. **自定义编译扫描**（针对交叉编译或特定目标）：
+```bash
+CUSTOM_BUILD_CMD="make -f Makefile.arm" ./tools/cppcheck_launcher.sh clang
+
+```
+
+
+5. **清理环境**：
 ```bash
 ./tools/cppcheck_launcher.sh clean
 
@@ -82,13 +100,18 @@ sudo apt-get install cppcheck
 
 ## 4. 结果产物
 
-### 终端输出示例
+### 交互式报告查看
 
-* **进度显示**：`>>> 当前分析进度: [ 45%]`
-* **彩色摘要**：
-* `[error]: 0 issues.` (绿色)
-* `[warning]: 2 issues found.` (黄色)
+* **Cppcheck 报告**：位于 `cppcheck_report/index.html`。
+* **Clang 报告**：位于 `clang_report/` 目录下的日期子目录中。
+* **命令行预览**：
+```bash
+# 使用 w3m 在终端直接查看报告摘要
+w3m -M -dump cppcheck_report/index.html
 
+```
+
+### 终端摘要示例 (cppcheck)
 ```text
 kay@kay-vm:cppcheck_test_project$
 kay@kay-vm:cppcheck_test_project$ ./tools/cppcheck_launcher.sh init
@@ -236,37 +259,116 @@ kay@kay-vm:cppcheck_test_project$
 ```
 
 
-### 网页报告
+### 终端摘要示例 (Clang)
 
-扫描完成后，打开以下文件查看详细缺陷描述及代码位置：
-`cppcheck_report/index.html`
+```text
+kay@kay-vm:cppcheck_test_project$ ./tools/cppcheck_launcher.sh clang
+>>> 启动 Clang Static Analyzer...
+>>> 检测到 Makefile，执行默认构建...
+scan-build: Using '/usr/lib/llvm-10/bin/clang' for static analysis
+/usr/share/clang/scan-build-10/bin/../libexec/c++-analyzer -Wall -Wextra -g -Iinclude -Isrc/common/lib_a/include -Isrc/framework/core/include -c src/main.cpp -o src/main.o
+/usr/share/clang/scan-build-10/bin/../libexec/c++-analyzer -Wall -Wextra -g -Iinclude -Isrc/common/lib_a/include -Isrc/framework/core/include -c src/common/lib_a/src/style.cpp -o src/common/lib_a/src/style.o
+src/common/lib_a/src/style.cpp: In function ‘void test_style(std::vector<std::__cxx11::basic_string<char> >)’:
+src/common/lib_a/src/style.cpp:4:23: warning: comparison of integer expressions of different signedness: ‘int’ and ‘std::vector<std::__cxx11::basic_string<char> >::size_type’ {aka ‘long unsigned int’} [-Wsign-compare]
+    4 |     for (int i = 0; i < v.size(); ++i) { // 建议使用 const reference 和 size_t
+      |                     ~~^~~~~~~~~~
+/usr/share/clang/scan-build-10/bin/../libexec/c++-analyzer -Wall -Wextra -g -Iinclude -Isrc/common/lib_a/include -Isrc/framework/core/include -c src/common/lib_a/src/uninit.cpp -o src/common/lib_a/src/uninit.o
+/usr/share/clang/scan-build-10/bin/../libexec/c++-analyzer -Wall -Wextra -g -Iinclude -Isrc/common/lib_a/include -Isrc/framework/core/include -c src/framework/core/src/memory_leak.cpp -o src/framework/core/src/memory_leak.o
+src/framework/core/src/memory_leak.cpp: In function ‘void test_error()’:
+src/framework/core/src/memory_leak.cpp:2:10: warning: unused variable ‘p’ [-Wunused-variable]
+    2 |     int* p = new int[10];
+      |          ^
+src/framework/core/src/memory_leak.cpp:2:10: warning: Value stored to 'p' during its initialization is never read
+    int* p = new int[10];
+         ^   ~~~~~~~~~~~
+src/framework/core/src/memory_leak.cpp:4:1: warning: Potential leak of memory pointed to by 'p'
+}
+^
+2 warnings generated.
+src/common/lib_a/src/uninit.cpp: In function ‘void test_warning()’:
+src/common/lib_a/src/uninit.cpp:4:5: warning: ‘x’ is used uninitialized in this function [-Wuninitialized]
+    4 |     if (x > 0) { // x 未初始化，触发 warning
+      |     ^~
+src/common/lib_a/src/uninit.cpp:4:11: warning: The left operand of '>' is a garbage value
+    if (x > 0) { // x 未初始化，触发 warning
+        ~ ^
+1 warning generated.
+/usr/share/clang/scan-build-10/bin/../libexec/c++-analyzer src/main.o src/common/lib_a/src/style.o src/common/lib_a/src/uninit.o src/framework/core/src/memory_leak.o -o test_prog
+scan-build: 3 bugs found.
+scan-build: Run 'scan-view /home/kay/codebase/test/cppcheck_test_project/clang_report/2025-12-23-194136-130652-1' to examine bug reports.
+---------------------------------------
+>>> Clang 分析完成！
+>>> 详细交互式报告请打开: /home/kay/codebase/test/cppcheck_test_project/clang_report/2025-12-23-194136-130652-1/index.html
+---------------------------------------
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$ w3m -M -dump clang_report/2025-12-23-194136-130652-1/
+index.html          report-28f310.html  report-388ac0.html  report-898f36.html  scanview.css        sorttable.js
+kay@kay-vm:cppcheck_test_project$ w3m -M -dump clang_report/2025-12-23-194136-130652-1/index.html
+cppcheck_test_project - scan-build results
 
----
+      User:        kay@kay-vm
+Working Directory: /home/kay/codebase/test/cppcheck_test_project
+  Command Line:    make -j2
+  Clang Version:   clang version 10.0.0-4ubuntu1
+      Date:        Tue Dec 23 19:41:36 2025
 
-## 5. 脚本 Usage 详解
+Bug Summary
 
-```bash
-./tools/cppcheck_launcher.sh [命令|路径1] [路径2] ... [选项]
+Bug Type                                    Quantity Display?
+All Bugs                                    3          [ ]
+                Dead store
+Dead initialization                         1          [ ]
+                Logic error
+Result of operation is garbage or undefined 1          [ ]
+               Memory error
+Memory leak                                 1          [ ]
 
+Reports
+
+Bug    Bug Type ▾             File              Function/    Line Path
+Group                                           Method            Length
+Dead                          framework/core/                            View
+store  Dead initialization    src/              test_error   2    1      Report
+                              memory_leak.cpp
+Memory                        framework/core/                            View
+error  Memory leak            src/              test_error   4    2      Report
+                              memory_leak.cpp
+Logic  Result of operation is common/lib_a/src/ test_warning 4    2      View
+error  garbage or undefined   uninit.cpp                                 Report
+
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$ ./tools/cppcheck_launcher.sh clean
+>>> 正在执行深度清理...
+    [Already Clean] : cppcheck_cache
+    [Already Clean] : cppcheck_report
+    [Already Clean] : cppcheck_results.xml
+    [Deleting Dir]  : /home/kay/codebase/test/cppcheck_test_project/clang_report
+    [Deleting File] : /home/kay/codebase/test/cppcheck_test_project/test_prog
+    [Invoke Make]   : 正在执行 make clean...
+    [Status]        : Makefile 清理成功
+>>> 清理完成。工作区已恢复至纯净状态。
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$
 ```
 
-**核心控制：**
-
-* `init`: 初始化配置。
-* `clean`: 清理缓存与产物。
-* `--no-progress`: 在 CI 环境中禁用动态进度条以保持日志整洁。
-
 ---
 
-## 6. Git 维护建议
+## 5. Git 维护建议
 
-建议在项目的 `.gitignore` 中加入以下内容，避免提交临时产物：
+为保持代码库整洁，建议在 `.gitignore` 中忽略以下路径：
 
 ```ignore
-# Cppcheck 产物
+# 扫描产物
 cppcheck_cache/
 cppcheck_results.xml
 cppcheck_report/
+clang_report/
+
+# 编译产物
+*.o
+test_prog
 
 ```
 
