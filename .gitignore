@@ -1,0 +1,12 @@
+# Cppcheck 产物
+cppcheck_results.xml
+cppcheck_results.txt
+cppcheck_report/
+
+# 编译产物
+build/
+*.o
+*.out
+
+# 系统文件
+.DS_Store

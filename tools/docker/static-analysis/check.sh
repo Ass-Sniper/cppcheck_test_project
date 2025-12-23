@@ -1,0 +1,57 @@
+#!/bin/bash
+scriptdir="$(cd "${0%/*}" && pwd)"
+rootdir="${scriptdir%/*/*/*}"
+. "${rootdir}/tools/functions.sh"
+OUTPUT_FILE="$rootdir/cppcheck_results.txt"
+INCLUDES=()
+while IFS='' read -r line; do INCLUDES+=("-I$line"); done < <(find -L "$rootdir/common" "$rootdir/framework" -type d -name include)
+
+usage() {
+    echo "usage: $(basename "$0") <source> [source]"
+}
+
+run_cppcheck() {
+    cppcheck --template='{file}:{line}:{column}: {severity}: {message} [{id}]\n{code}' \
+             --force --error-exitcode=1 --enable=warning,style,information,performance,portability \
+             -i"$rootdir/framework/platform/nbapi/unit_tests" \
+             -i"$rootdir/framework/external" \
+             -i"$rootdir/build" \
+             --inline-suppr \
+             --suppressions-list="$rootdir"/tools/docker/static-analysis/suppressions.txt \
+             -rp="$rootdir" -j$(nproc) -q "${INCLUDES[@]}" "$@" 2>&1 | sed "s|$rootdir/||g" | tee "$OUTPUT_FILE"
+}
+
+colorize_severity() {
+    local severity="$1" msg="$2"
+    case "$severity" in
+        error) printf '\033[1;31m%s\033[0m\n' "$msg" ;;
+        warning) printf '\033[1;33m%s\033[0m\n' "$msg" ;;
+        style) printf '\033[1;34m%s\033[0m\n' "$msg" ;;
+        performance) printf '\033[1;35m%s\033[0m\n' "$msg" ;;
+        portability) printf '\033[1;36m%s\033[0m\n' "$msg" ;;
+        ok) printf '\033[1;90m%s\033[0m\n' "$msg" ;;
+    esac
+}
+
+output_results() {
+    local severities="portability performance style warning error"
+    local status=0
+    for s in $severities; do
+        nb_issues="$(grep -Ec "^[^ ]+ $s:" "$OUTPUT_FILE")"
+        if [ "$nb_issues" -gt 0 ] ; then
+            colorize_severity "$s" "$nb_issues issues with severity $s"
+            [[ "$s" == "error" || "$s" == "warning" ]] && status=1
+        else
+            colorize_severity "ok" "0 issues with severity $s"
+        fi
+    done
+    return $status
+}
+
+if ! command -v cppcheck > /dev/null ; then
+    echo "Please install cppcheck!"
+    exit 1
+fi
+
+run_cppcheck "$@"
+output_results
