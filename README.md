@@ -368,3 +368,14 @@ test_prog
 ```
 
 ---
+
+## 6. 开发者守卫 (Git Hooks)
+
+为了保证入库代码质量，建议所有开发者启用提交前自动扫描。
+
+### 安装方法
+```bash
+chmod +x tools/install_hooks.sh
+./tools/install_hooks.sh
+```
+---
