@@ -1,8 +1,3 @@
-根据您提供的项目结构更新（新增了 `Makefile`、`src/main.cpp` 以及集成的 **Clang Static Analyzer** 功能），我们需要全面更新 `README.md`。
-
-新版 `README.md` 强化了“双重扫描”的概念，并增加了关于自定义编译命令的说明。
-
----
 
 # C++ 静态分析集成工具 (Cppcheck & Clang Automation)
 
