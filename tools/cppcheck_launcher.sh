@@ -13,16 +13,21 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 usage() {
     cat <<EOF
-用法: $(basename "$0") [命令|路径1] [路径2] ... [选项]
+用法: $(basename "$0") [命令|路径] [选项]
 
 核心命令:
-  init              在 cppcheck/ 目录下初始化屏蔽规则和嵌入式定义模板
-  clean             清理缓存目录 (.cppcheck_cache)、报告和 XML
-  [路径]            指定扫描目录 (例如: ./src)。支持多个路径。
+  init              初始化配置模板 (suppressions.txt, embedded.cfg, include_paths.txt)
+  clean             深度清理：移除缓存、所有报告(Cppcheck/Clang)及构建产物(make clean)
+  clang             启动 Clang Static Analyzer 深度扫描 (需项目根目录存在 Makefile/CMake)
+  [路径]            执行标准 Cppcheck 扫描 (默认: src/)
+
+环境变量支持 (仅用于 clang 模式):
+  CUSTOM_BUILD_CMD  指定自定义编译命令以替代自动探测
+                    示例: CUSTOM_BUILD_CMD="make -f Makefile.arm" $0 clang
 
 选项:
-  --no-progress     禁用动态进度条 (非交互式环境/CI 建议使用)
-  -h, --help        显示帮助信息
+  --no-progress     禁用 Cppcheck 扫描时的动态进度条 (CI 环境推荐)
+  -h, --help        显示本帮助信息
 
 EOF
     exit 1
@@ -41,7 +46,7 @@ MODE=""
 # 解析参数
 for arg in "$@"; do
     case "$arg" in
-        init|clean) MODE="$arg" ;;
+        init|clean|clang) MODE="$arg" ;;
         --no-progress) SHOW_PROGRESS=false ;;
         -*) EXTRA_ARGS+=("$arg") ;;
         *) 
@@ -63,29 +68,47 @@ REPORT_DIR="$PROJECT_ROOT/cppcheck_report"
 XML_FILE="$PROJECT_ROOT/cppcheck_results.xml"
 
 # ------------------------------------------------------------
-# 2. 指令处理 (init / clean)
+# 2. 清理模式 (支持 Cppcheck + Clang + Makefile 联动)
 # ------------------------------------------------------------
 if [[ "$MODE" == "clean" ]]; then
-    echo ">>> 正在清理分析痕迹..."
-    
-    # 定义待清理列表
-    TARGETS=("$BUILD_DIR" "$REPORT_DIR" "$XML_FILE")
-    
+    echo ">>> 正在执行深度清理..."
+
+    # 定义所有可能的清理目标
+    # 包含：构建缓存、HTML报告、XML结果、Clang报告目录、编译出的二进制程序
+    TARGETS=(
+        "$BUILD_DIR" 
+        "$REPORT_DIR" 
+        "$XML_FILE" 
+        "$PROJECT_ROOT/clang_report"
+        "$PROJECT_ROOT/test_prog"
+    )
+
+    # 1. 物理文件与目录清理
     for item in "${TARGETS[@]}"; do
         if [[ -e "$item" ]]; then
-            # 根据文件类型显示不同的前缀
             if [[ -d "$item" ]]; then
-                echo "    [Deleting Dir]: $item"
+                echo "    [Deleting Dir]  : $item"
             else
-                echo "    [Deleting File]: $item"
+                echo "    [Deleting File] : $item"
             fi
             rm -rf "$item"
         else
-            echo "    [Skipping]: $item (不存在)"
+            # 只有在调试时才打印 Skipping，保持界面整洁
+            echo "    [Already Clean] : $(basename "$item")"
         fi
     done
 
-    echo ">>> 清理完成。所有临时统计结果与报告已移除。"
+    # 2. 联动 Makefile 清理 (清理 .o 等中间件)
+    if [ -f "$PROJECT_ROOT/Makefile" ]; then
+        echo "    [Invoke Make]   : 正在执行 make clean..."
+        # -C 切换到项目根目录执行，--no-print-directory 减少冗余输出
+        make -C "$PROJECT_ROOT" clean --no-print-directory > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+             echo "    [Status]        : Makefile 清理成功"
+        fi
+    fi
+
+    echo ">>> 清理完成。工作区已恢复至纯净状态。"
     exit 0
 fi
 
@@ -159,6 +182,57 @@ EOF
         echo ">>> 已创建模板: $EMBEDDED_CFG"
     fi
     echo ">>> 初始化流程结束。"
+    exit 0
+fi
+
+# ------------------------------------------------------------
+# 2.5 Clang Static Analyzer 集成 (支持自定义编译)
+# ------------------------------------------------------------
+# 默认编译命令变量，支持通过环境变量或脚本内修改
+CUSTOM_BUILD_CMD="${CUSTOM_BUILD_CMD:-""}"
+
+if [[ "$MODE" == "clang" ]]; then
+    if ! command -v scan-build > /dev/null; then
+        echo ">>> [错误] 未找到 scan-build。请执行: sudo apt install clang-tools"
+        exit 1
+    fi
+
+    CLANG_REPORT="$PROJECT_ROOT/clang_report"
+    mkdir -p "$CLANG_REPORT"
+    
+    echo ">>> 启动 Clang Static Analyzer..."
+
+    # --- 自定义编译命令支持 ---
+    # 优先使用环境变量 CUSTOM_BUILD_CMD，例如：
+    # CUSTOM_BUILD_CMD="make -f Makefile.arm" ./tools/cppcheck_launcher.sh clang
+    if [ -n "$CUSTOM_BUILD_CMD" ]; then
+        BUILD_CMD="$CUSTOM_BUILD_CMD"
+        echo ">>> 使用自定义编译命令: $BUILD_CMD"
+    else
+        # 自动探测逻辑
+        if [ -f "CMakeLists.txt" ]; then
+            BUILD_CMD="cmake . && make -j$(nproc)"
+            echo ">>> 检测到 CMake 项目，执行默认构建..."
+        elif [ -f "Makefile" ]; then
+            BUILD_CMD="make -j$(nproc)"
+            echo ">>> 检测到 Makefile，执行默认构建..."
+        else
+            echo ">>> [错误] 未检测到构建文件且未指定 CUSTOM_BUILD_CMD。"
+            exit 1
+        fi
+    fi
+
+    # 执行分析
+    # 去掉 --view 避免在无桌面环境下报错
+    scan-build -o "$CLANG_REPORT" $BUILD_CMD
+
+    # 获取最新生成的报告子目录
+    LATEST_SUBDIR=$(ls -td "${CLANG_REPORT}"/*/ | head -1)
+    
+    echo "---------------------------------------"
+    echo ">>> Clang 分析完成！"
+    echo ">>> 详细交互式报告请打开: ${LATEST_SUBDIR}index.html"
+    echo "---------------------------------------"
     exit 0
 fi
 
