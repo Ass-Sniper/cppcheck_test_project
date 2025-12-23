@@ -2,7 +2,8 @@
 cppcheck_cache/
 # Cppcheck 报告输出目录
 cppcheck_reports/
-cppcheck_results.xml
+**/cppcheck_results.xml
+clang_report/
 
 # 编译产物
 build/
