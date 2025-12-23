@@ -67,8 +67,25 @@ XML_FILE="$PROJECT_ROOT/cppcheck_results.xml"
 # ------------------------------------------------------------
 if [[ "$MODE" == "clean" ]]; then
     echo ">>> 正在清理分析痕迹..."
-    rm -rf "$BUILD_DIR" "$REPORT_DIR" "$XML_FILE"
-    echo ">>> 清理完成。"
+    
+    # 定义待清理列表
+    TARGETS=("$BUILD_DIR" "$REPORT_DIR" "$XML_FILE")
+    
+    for item in "${TARGETS[@]}"; do
+        if [[ -e "$item" ]]; then
+            # 根据文件类型显示不同的前缀
+            if [[ -d "$item" ]]; then
+                echo "    [Deleting Dir]: $item"
+            else
+                echo "    [Deleting File]: $item"
+            fi
+            rm -rf "$item"
+        else
+            echo "    [Skipping]: $item (不存在)"
+        fi
+    done
+
+    echo ">>> 清理完成。所有临时统计结果与报告已移除。"
     exit 0
 fi
 
@@ -151,35 +168,54 @@ fi
 mkdir -p "$BUILD_DIR"
 [[ ${#SCAN_PATHS[@]} -eq 0 ]] && SCAN_PATHS+=("$PROJECT_ROOT/src")
 
-echo ">>> 正在搜寻头文件目录..."
-
-# 定义存放头文件参数的数组
+# 定义配置文件路径
+INCLUDE_CONF="$PROJECT_ROOT/cppcheck/include_paths.txt"
 INCLUDES=()
 
-# --- [手动添加说明] ---
-# 如果自动搜寻漏掉了某些目录，或者目录名不叫 "include"，可以在此处手动添加：
-# 示例：INCLUDES+=("-I$PROJECT_ROOT/external/custom_headers")
-# ----------------------
+echo ">>> 正在组装头文件包含路径..."
 
-# 使用 find 自动查找扫描路径下所有名为 "include" 的目录
-# -L: 跟随符号链接 (处理外部 SDK 引用)
-# sort -u: 路径去重，防止重复包含
-while IFS='' read -r line; do 
-    if [ -n "$line" ]; then
-        INCLUDES+=("-I$line")
-    fi
-done < <(find -L "${SCAN_PATHS[@]}" -type d -name include 2>/dev/null | sort -u)
-
-# --- 分行打印搜寻结果 ---
-if [ ${#INCLUDES[@]} -gt 0 ]; then
-    for inc in "${INCLUDES[@]}"; do
-        echo "    [Found]: ${inc#-I}" # 去掉 -I 前缀打印路径，更整洁
-    done
-else
-    echo "    [!] 未发现名为 'include' 的目录。"
+# --- 1. 从配置文件解析 (手动部分) ---
+if [[ -f "$INCLUDE_CONF" ]]; then
+    echo "    [Config]: 正在从 $INCLUDE_CONF 加载自定义路径..."
+    while IFS='' read -r line || [[ -n "$line" ]]; do
+        # 过滤注释行 (#) 和空行
+        clean_line=$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        [[ "$clean_line" =~ ^#.*$ ]] || [[ -z "$clean_line" ]] && continue
+        
+        # 将相对路径转为绝对路径并检查目录是否存在
+        abs_path=$(realpath -m "$PROJECT_ROOT/$clean_line")
+        if [[ -d "$abs_path" ]]; then
+            INCLUDES+=("-I$abs_path")
+        else
+            echo "      ! 忽略不存在的目录: $clean_line"
+        fi
+    done < "$INCLUDE_CONF"
 fi
 
-echo ">>> 搜寻完毕，共加载 ${#INCLUDES[@]} 个路径。"
+# --- 2. 自动搜寻 (find 扫描部分) ---
+echo "    [Auto]: 正在扫描目录树以发现 'include' 文件夹..."
+while IFS='' read -r line; do 
+    if [[ -n "$line" ]]; then
+        INCLUDES+=("-I$line")
+    fi
+done < <(find -L "${SCAN_PATHS[@]}" -type d -name include 2>/dev/null)
+
+# --- 3. 去重与分行结果展示 ---
+# 利用 printf 和 sort -u 对数组内容进行去重
+if [[ ${#INCLUDES[@]} -gt 0 ]]; then
+    # 重新排序并去重
+    mapfile -t UNIQUE_INCLUDES < <(printf "%s\n" "${INCLUDES[@]}" | sort -u)
+    INCLUDES=("${UNIQUE_INCLUDES[@]}")
+
+    echo ">>> 已加载的包含路径清单:"
+    for inc in "${INCLUDES[@]}"; do
+        echo "    - ${inc#-I}"
+    done
+else
+    echo "    [!] 未发现任何有效头文件路径。"
+fi
+
+echo ">>> 搜寻完毕，共加载 ${#INCLUDES[@]} 个唯一路径。"
 
 # ------------------------------------------------------------
 # 4. 执行扫描
