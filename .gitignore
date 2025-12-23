@@ -11,3 +11,6 @@ build/
 
 # 系统文件
 .DS_Store
+
+# 忽略 Git 提交消息临时文件
+.gitcommit_msg
