@@ -89,6 +89,151 @@ sudo apt-get install cppcheck
 * `[error]: 0 issues.` (绿色)
 * `[warning]: 2 issues found.` (黄色)
 
+```text
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$ ./tools/cppcheck_launcher.sh init
+>>> 已创建模板: /home/kay/codebase/test/cppcheck_test_project/cppcheck/suppressions.txt
+>>> 已创建模板: /home/kay/codebase/test/cppcheck_test_project/cppcheck/embedded.cfg
+>>> 初始化流程结束。
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$ ./tools/cppcheck_launcher.sh src/
+>>> 正在组装头文件包含路径...
+    [Config]: 正在从 /home/kay/codebase/test/cppcheck_test_project/cppcheck/include_paths.txt 加载自定义路径...
+    [Auto]: 正在扫描目录树以发现 'include' 文件夹...
+>>> 已加载的包含路径清单:
+    - /home/kay/codebase/test/cppcheck_test_project/include
+    - /home/kay/codebase/test/cppcheck_test_project/src/common/lib_a/include
+    - /home/kay/codebase/test/cppcheck_test_project/src/framework/core/include
+>>> 搜寻完毕，共加载 3 个唯一路径。
+>>> 启动扫描 [项目根目录: /home/kay/codebase/test/cppcheck_test_project]
+
+>>> 成功！报告: /home/kay/codebase/test/cppcheck_test_project/cppcheck_report/index.html
+---------------------------------------
+扫描摘要:
+  [error]: 3 issues.
+  [warning]: 0 issues.
+  [style]: 8 issues.
+  [performance]: 0 issues.
+  [portability]: 0 issues.
+---------------------------------------
+>>> 检测到风险，请检查报告。
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$ w3m
+
+Command 'w3m' not found, but can be installed with:
+
+sudo apt install w3m
+
+kay@kay-vm:cppcheck_test_project$ sudo apt install w3m
+Reading package lists... Done
+Building dependency tree
+Reading state information... Done
+The following packages were automatically installed and are no longer required:
+  cmake-data libjsoncpp1 librhash0 python3-attr python3-cached-property python3-docker python3-dockerpty python3-docopt python3-importlib-metadata
+  python3-jsonschema python3-more-itertools python3-pyrsistent python3-texttable python3-websocket python3-zipp
+Use 'sudo apt autoremove' to remove them.
+Suggested packages:
+  cmigemo dict dict-wn dictd libsixel-bin mpv w3m-el w3m-img xsel
+The following NEW packages will be installed:
+  w3m
+0 upgraded, 1 newly installed, 0 to remove and 47 not upgraded.
+Need to get 916 kB of archives.
+After this operation, 2,572 kB of additional disk space will be used.
+Get:1 http://mirrors.aliyun.com/ubuntu focal-updates/main amd64 w3m amd64 0.5.3-37ubuntu0.2 [916 kB]
+Fetched 916 kB in 6s (143 kB/s)
+Selecting previously unselected package w3m.
+(Reading database ... 290561 files and directories currently installed.)
+Preparing to unpack .../w3m_0.5.3-37ubuntu0.2_amd64.deb ...
+Unpacking w3m (0.5.3-37ubuntu0.2) ...
+Setting up w3m (0.5.3-37ubuntu0.2) ...
+Processing triggers for man-db (2.9.1-1) ...
+Processing triggers for mime-support (3.64ubuntu1) ...
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$ w3m -M -dump cppcheck_report/index.html
+Cppcheck report - Static Analysis:
+
+Defect summary;
+
+[*] Toggle all
+
+Show #        Defect ID
+[*]  4  unusedFunction
+[*]  3  missingIncludeSystem
+[*]  2  unreadVariable
+[*]  1  checkersReport
+[*]  1  constVariablePointer
+[*]  1  memleak
+[*]  1  nullPointer
+[*]  1  uninitvar
+[*]  1  unusedAllocatedMemory
+     15 total
+
+Statistics
+
+Line          Id           CWE  Severity                 Message
+
+                                           Active checkers: 162/592 (use
+0    checkersReport            information --checkers-report=<filename> to see
+                                           details)
+/home/kay/codebase/test/cppcheck_test_project/src/common/lib_a/src/style.cpp
+                                           Include file: <string> not found.
+1    missingIncludeSystem      information Please note: Cppcheck does not need
+                                           standard library headers to get
+                                           proper results.
+                                           Include file: <vector> not found.
+2    missingIncludeSystem      information Please note: Cppcheck does not need
+                                           standard library headers to get
+                                           proper results.
+3    unusedFunction        561 style       The function &apos;test_style&apos;
+                                           is never used.
+/home/kay/codebase/test/cppcheck_test_project/src/common/lib_a/src/uninit.cpp
+                                           Include file: <iostream> not found.
+1    missingIncludeSystem      information Please note: Cppcheck does not need
+                                           standard library headers to get
+                                           proper results.
+2    unusedFunction        561 style       The function &apos;test_warning&
+                                           apos; is never used.
+/home/kay/codebase/test/cppcheck_test_project/src/framework/core/src/
+memory_leak.cpp
+1    unusedFunction        561 style       The function &apos;test_error&apos;
+                                           is never used.
+/home/kay/codebase/test/cppcheck_test_project/src/framework/external/
+bad_code.cpp
+1    unusedFunction        561 style       The function &apos;hidden_error&
+                                           apos; is never used.
+src/common/lib_a/src/style.cpp
+5    unreadVariable        563 style       Variable &apos;s&apos; is assigned a
+                                           value that is never used.
+src/common/lib_a/src/uninit.cpp
+4    uninitvar             457 error       Uninitialized variable: x
+src/framework/core/src/memory_leak.cpp
+2    constVariablePointer  398 style       Variable &apos;p&apos; can be
+                                           declared as pointer to const
+2    unreadVariable        563 style       Variable &apos;p&apos; is assigned a
+                                           value that is never used.
+2    unusedAllocatedMemory 563 style       Variable &apos;p&apos; is allocated
+                                           memory that is never used.
+4    memleak               401 error       Memory leak: p
+src/framework/external/bad_code.cpp
+3    nullPointer           476 error       Null pointer dereference: p
+
+Cppcheck 2.14 dev - a tool for static C/C++ code analysis Internet: http://
+cppcheck.net IRC: irc://irc.freenode.net/cppcheck
+
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$
+kay@kay-vm:cppcheck_test_project$ ./tools/cppcheck_launcher.sh clean
+>>> 正在清理分析痕迹...
+    [Deleting Dir]: /home/kay/codebase/test/cppcheck_test_project/cppcheck_cache
+    [Deleting Dir]: /home/kay/codebase/test/cppcheck_test_project/cppcheck_report
+    [Deleting File]: /home/kay/codebase/test/cppcheck_test_project/cppcheck_results.xml
+>>> 清理完成。所有临时统计结果与报告已移除。
+kay@kay-vm:cppcheck_test_project$
+```
 
 
 ### 网页报告
