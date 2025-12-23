@@ -1,0 +1,29 @@
+# ==========================================================
+# Cppcheck 屏蔽规则配置文件
+# Cppcheck 屏蔽规则 (格式: id:file:line)
+# ==========================================================
+# --- [嵌入式硬件相关] ---
+knownConditionTrueFalse:src/drivers/*
+readReadOnlyViolation
+nullPointer:src/bsp/*
+
+# --- [中断与并发] ---
+unusedFunction:src/interrupts.c
+variableScope:src/main.c
+
+# --- [语法与宏适配] ---
+syntaxError:include/cmsis/*
+unknownMacro:src/arch/cpu.c
+
+# --- [目录级排除] ---
+*:vendor/*
+*:sdk/*
+*:rtos/FreeRTOS/*
+*:build/*
+*:generated/*
+
+# --- [代码建议与风格] ---
+passedByValue
+
+# --- [误报屏蔽] ---
+unmatchedSuppression
