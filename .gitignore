@@ -1,7 +1,8 @@
-# Cppcheck 产物
+# Cppcheck 增量分析缓存目录
+cppcheck_cache/
+# Cppcheck 报告输出目录
+cppcheck_reports/
 cppcheck_results.xml
-cppcheck_results.txt
-cppcheck_report/
 
 # 编译产物
 build/
