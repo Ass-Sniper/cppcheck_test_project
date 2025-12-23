@@ -14,3 +14,6 @@ build/
 
 # 忽略 Git 提交消息临时文件
 .gitcommit_msg
+
+# 忽略项目下任何位置的 .patch 文件
+**/*.patch
