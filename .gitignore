@@ -1,9 +1,5 @@
-# Cppcheck 增量分析缓存目录
-cppcheck_cache/
-# Cppcheck 报告输出目录
-cppcheck_reports/
-**/cppcheck_results.xml
-clang_report/
+# Static-analysis reports and caches
+.analysis/
 
 # 编译产物
 build/

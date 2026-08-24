@@ -1,57 +1,41 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# 获取项目根目录
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-GIT_HOOK_DIR="$PROJECT_ROOT/.git/hooks"
-PRE_COMMIT_FILE="$GIT_HOOK_DIR/pre-commit"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    printf 'install_hooks: run this script from a Git worktree.\n' >&2
+    exit 2
+}
+HOOK_DIR="$PROJECT_ROOT/.git/hooks"
+HOOK_FILE="$HOOK_DIR/pre-commit"
+RUNNER="$PROJECT_ROOT/tools/static_analysis/static_analysis.sh"
 
-echo ">>> 正在安装 Git Hooks..."
+[[ -x "$RUNNER" ]] || {
+    printf 'install_hooks: analysis runner is not executable: %s\n' "$RUNNER" >&2
+    exit 2
+}
+mkdir -p "$HOOK_DIR"
 
-# 检查 .git 目录是否存在
-if [ ! -d "$PROJECT_ROOT/.git" ]; then
-    echo ">>> [错误] 未发现 .git 目录。请确保在 Git 仓库根目录下运行此脚本。"
-    exit 1
+if [[ -f "$HOOK_FILE" ]] && ! grep -q 'managed by tools/install_hooks.sh' "$HOOK_FILE"; then
+    backup="$HOOK_FILE.before-static-analysis.$(date +%Y%m%d%H%M%S)"
+    mv "$HOOK_FILE" "$backup"
+    printf 'install_hooks: backed up existing hook to %s\n' "$backup"
 fi
 
-# 写入 pre-commit 逻辑
-cat <<'EOF' > "$PRE_COMMIT_FILE"
-#!/bin/bash
+cat > "$HOOK_FILE" <<'EOF'
+#!/usr/bin/env bash
+# managed by tools/install_hooks.sh
+set -euo pipefail
 
-# 自动获取项目根目录
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-LAUNCHER="$PROJECT_ROOT/tools/cppcheck_launcher.sh"
+project_root="$(git rev-parse --show-toplevel)"
+mapfile -t changed_files < <(git diff --cached --name-only --diff-filter=ACMR -- \
+    '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp')
 
-echo "-------------------------------------------------------"
-echo ">>> [Git Hook] 正在进行提交前强制扫描..."
-echo "-------------------------------------------------------"
+[[ "${#changed_files[@]}" -gt 0 ]] || exit 0
+"$project_root/tools/static_analysis/static_analysis.sh" --root "$project_root" cppcheck "${changed_files[@]}"
 
-# 1. 运行 Cppcheck
-$LAUNCHER src/ --no-progress
-if [ $? -ne 0 ]; then
-    echo ""
-    echo ">>> [拦截] Cppcheck 发现风险，请修复后再提交！"
-    echo "-------------------------------------------------------"
-    exit 1
+if [[ "${STATIC_ANALYSIS_PRE_COMMIT_CLANG:-0}" == 1 ]]; then
+    "$project_root/tools/static_analysis/static_analysis.sh" --root "$project_root" clang
 fi
-
-# 2. 运行 Clang
-echo ">>> [Git Hook] Cppcheck 通过，启动 Clang 深度分析..."
-$LAUNCHER clang
-if [ $? -ne 0 ]; then
-    echo ""
-    echo ">>> [拦截] Clang 发现逻辑缺陷，请修复后再提交！"
-    echo "-------------------------------------------------------"
-    exit 1
-fi
-
-echo ">>> [成功] 双重扫描通过，允许提交。"
-echo "-------------------------------------------------------"
-exit 0
 EOF
-
-# 赋予执行权限
-chmod +x "$PRE_COMMIT_FILE"
-
-echo ">>> [完成] pre-commit hook 已安装并激活。"
-echo ">>> 现在每次执行 'git commit' 时，系统都会自动为您进行代码体检。"
+chmod +x "$HOOK_FILE"
+printf 'install_hooks: installed %s\n' "$HOOK_FILE"
